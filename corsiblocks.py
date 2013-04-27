@@ -17,10 +17,11 @@ import pylab, time
 class CorsiBlocks:
   def __init__(self):
     self.setup_main_screen()
-    self.difficulty = 0 #0,1,2
+    self.span = 2 #How many block
     self.running = False
-    self.timer = None
-    self.done = False
+    self.streak = 0
+    self.staircase_streak = 2 #How many corrects before we increase difficulty
+    self.span_history = [] #Our trial results
 
   def setup_main_screen(self):
     self.fig = pylab.figure(figsize=(6,8))
@@ -28,21 +29,16 @@ class CorsiBlocks:
     pylab.suptitle('Corsi Blocks')
 
     rows = 10
-    cols = 4
+    cols = 8
 
     self.ax = {}
     #Main corsi blocks display
-    self.ax['main'] = pylab.subplot2grid((rows, cols), (0, 0), colspan=4, rowspan=9)
+    self.ax['main'] = pylab.subplot2grid((rows, cols), (0, 0), colspan=cols, rowspan=rows-1)
     self.clear_main_screen('Click anywhere to start')
 
-    #Menu
-    for n, menu_item in enumerate(['go', 'easy', 'moderate', 'hard']):
-      self.ax[menu_item] = pylab.subplot2grid((rows, cols), (9, n))
-      h = pylab.text(0.2, 0.5, menu_item)
-      pylab.setp(self.ax[menu_item], 'xticks', [], 'yticks', [])
-      if menu_item == 'go':
-        self.start_button_text = h
-
+    #The staircase display with span estimate
+    self.ax['staircase'] = pylab.subplot2grid((rows, cols), (9, 1), colspan=cols-1)
+    pylab.setp(self.ax['staircase'], 'xticks', [], 'yticks', [])
     self.cid = self.fig.canvas.mpl_connect('button_press_event', self.onclick)
 
   def clear_main_screen(self, msg=None):
@@ -54,13 +50,7 @@ class CorsiBlocks:
 
   def start_session(self):
     self.running = True
-    if self.timer is not None:
-      self.timer.stop()
-      self.timer.remove_callback(self.start_session)
-    self.start_button_text.set_text('Done') #Change start button to indicate new role
-    pylab.draw()
-    block_count_list = [2,4,8]
-    bc = block_count_list[self.difficulty]
+    bc = self.span
     idx = pylab.arange(5*5) #we work on a 5,5 square
     pylab.shuffle(idx)
     self.this_sequence = idx[:bc] #Sequence of blocks
@@ -92,65 +82,42 @@ class CorsiBlocks:
       self.trial_correct(False)
 
   def trial_correct(self, result):
-    # ax = self.ax['main']
-    # ax.cla()
-    # pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
     if result:
-      #ax.text(2.5,2.5, 'Correct!\nClick anywhere to continue')
       msg = 'Correct!\nClick anywhere to continue'
+      self.streak += 1
+      self.span_history.append(self.span)
+      if self.streak >= self.staircase_streak:
+        self.span += 1
+        self.streak = 0
     else:
       msg = 'Wrong :(\nClick anywhere to continue'
-      #ax.text(2.5,2.5, 'In correct :(\nClick anywhere to continue')
+      self.streak = 0
+      self.span = max(1, self.span - 1)
+
     self.clear_main_screen(msg)
+    self.plot_span_history()
     self.running = False
     pylab.draw()
 
-    # self.timer = self.fig.canvas.new_timer(interval=5000)
-    # self.timer.add_callback(self.start_session)
-    # self.timer.start()
-    # pylab.draw()
-
-  def abort_trial(self):
-    #Code to close out trial
-    ax = self.ax['main']
+  def plot_span_history(self):
+    sh = self.span_history
+    l = max(-10, -len(sh))
+    my_span = sum(sh[l:])/float(-l)
+    ax = self.ax['staircase']
     ax.cla()
-    pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
-    self.running = False
-    self.start_button_text.set_text('Go') #Change start button to indicate new role
-    pylab.draw()
-
-  def set_difficulty(self, level):
-    self.difficulty = level
-    items = ['easy', 'moderate', 'hard']
-    for item in items:
-      self.ax[item].patch.set_facecolor('white')
-    self.ax[items[level]].patch.set_facecolor('green')
+    ax.plot(sh,'k.')
+    ax.plot([0, len(sh)-1], [my_span, my_span], 'k:')
+    pylab.xlabel('Trials')
+    pylab.ylabel('Span')
+    pylab.setp(ax, 'xlim', [-.5, 1.1*(len(sh)-1)], 'ylim', [0, max(sh)+.5], 'xticks', [len(sh)-1], 'yticks', [my_span], 'yticklabels',['{:1.1f}'.format(my_span)], 'xticklabels', [len(sh)])
 
   def onclick(self, event):
     if event.name == 'button_press_event':
-      for axname, axval in self.ax.items():
-        if event.inaxes == axval:
-          if axname == 'main': #We clicked on main screen, trying for a corsi blocks thingy
-            if self.running:
-              self.test_block(event)
-            else:
-              self.start_session()
-          elif axname == 'go':
-            if self.running == False:
-              self.start_session()
-            else:
-              self.abort_trial()
-              self.done = True
-          elif axname == 'easy':
-            #Abort this trial
-            self.abort_trial()
-            self.set_difficulty(0)
-          elif axname == 'moderate':
-            self.abort_trial()
-            self.set_difficulty(1)
-          elif axname == 'hard':
-            self.abort_trial()
-            self.set_difficulty(2)
+      if event.inaxes == self.ax['main']:#We clicked on main screen
+        if self.running: #We are in the middle of a trial
+          self.test_block(event)
+        else: #We want to start a new trial
+          self.start_session()
 
 cb = CorsiBlocks()
 pylab.show()
