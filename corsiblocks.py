@@ -7,6 +7,8 @@ The display of the corsi blocks occurs within a single method run_corsi which re
 To generate app on mac
 
 python ~/bin/pyinstaller-2.0/pyinstaller.py -F -w -y corsiblocks.py
+
+TODO: Implement staircase method and give realtime feedback at bottom as a strip chart and current threshold value
 """
 import matplotlib
 matplotlib.use('macosx')
@@ -18,6 +20,7 @@ class CorsiBlocks:
     self.difficulty = 0 #0,1,2
     self.running = False
     self.timer = None
+    self.done = False
 
   def setup_main_screen(self):
     self.fig = pylab.figure(figsize=(6,8))
@@ -30,7 +33,7 @@ class CorsiBlocks:
     self.ax = {}
     #Main corsi blocks display
     self.ax['main'] = pylab.subplot2grid((rows, cols), (0, 0), colspan=4, rowspan=9)
-    pylab.setp(self.ax['main'], 'xticks', [], 'yticks', [])
+    self.clear_main_screen('Click anywhere to start')
 
     #Menu
     for n, menu_item in enumerate(['go', 'easy', 'moderate', 'hard']):
@@ -40,8 +43,14 @@ class CorsiBlocks:
       if menu_item == 'go':
         self.start_button_text = h
 
-    pylab.show()
     self.cid = self.fig.canvas.mpl_connect('button_press_event', self.onclick)
+
+  def clear_main_screen(self, msg=None):
+    ax = self.ax['main']
+    ax.cla()
+    pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
+    if msg is not None:
+      ax.text(2,2,msg,horizontalalignment='center')
 
   def start_session(self):
     self.running = True
@@ -49,14 +58,14 @@ class CorsiBlocks:
       self.timer.stop()
       self.timer.remove_callback(self.start_session)
     self.start_button_text.set_text('Done') #Change start button to indicate new role
+    pylab.draw()
     block_count_list = [2,4,8]
     bc = block_count_list[self.difficulty]
     idx = pylab.arange(5*5) #we work on a 5,5 square
     pylab.shuffle(idx)
     self.this_sequence = idx[:bc] #Sequence of blocks
+    self.clear_main_screen()
     ax = self.ax['main']
-    ax.cla()
-    pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
     self.block_h = []
     for b in xrange(bc):
       x = idx[b]%5
@@ -83,22 +92,32 @@ class CorsiBlocks:
       self.trial_correct(False)
 
   def trial_correct(self, result):
-    ax = self.ax['main']
-    ax.cla()
-    pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
+    # ax = self.ax['main']
+    # ax.cla()
+    # pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
     if result:
-      ax.text(2.5,2.5, 'Correct!')
+      #ax.text(2.5,2.5, 'Correct!\nClick anywhere to continue')
+      msg = 'Correct!\nClick anywhere to continue'
     else:
-      ax.text(2.5,2.5, 'In correct :(')
+      msg = 'Wrong :(\nClick anywhere to continue'
+      #ax.text(2.5,2.5, 'In correct :(\nClick anywhere to continue')
+    self.clear_main_screen(msg)
+    self.running = False
+    pylab.draw()
 
-    self.timer = self.fig.canvas.new_timer(interval=5000)
-    self.timer.add_callback(self.start_session)
-    self.timer.start()
+    # self.timer = self.fig.canvas.new_timer(interval=5000)
+    # self.timer.add_callback(self.start_session)
+    # self.timer.start()
+    # pylab.draw()
 
   def abort_trial(self):
     #Code to close out trial
+    ax = self.ax['main']
+    ax.cla()
+    pylab.setp(ax,'xlim', [-1, 5], 'ylim', [-1, 5], 'xticks', [], 'yticks', [])
     self.running = False
     self.start_button_text.set_text('Go') #Change start button to indicate new role
+    pylab.draw()
 
   def set_difficulty(self, level):
     self.difficulty = level
@@ -112,10 +131,16 @@ class CorsiBlocks:
       for axname, axval in self.ax.items():
         if event.inaxes == axval:
           if axname == 'main': #We clicked on main screen, trying for a corsi blocks thingy
-            self.test_block(event)
+            if self.running:
+              self.test_block(event)
+            else:
+              self.start_session()
           elif axname == 'go':
             if self.running == False:
               self.start_session()
+            else:
+              self.abort_trial()
+              self.done = True
           elif axname == 'easy':
             #Abort this trial
             self.abort_trial()
@@ -127,5 +152,5 @@ class CorsiBlocks:
             self.abort_trial()
             self.set_difficulty(2)
 
-pylab.ion() #Stupid macosx backend
 cb = CorsiBlocks()
+pylab.show()
